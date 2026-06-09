@@ -27,7 +27,13 @@ interface PortfolioItem {
 }
 
 export default function StudentDashboard() {
-  const [userId, setUserId] = useState("demo-student-1");
+  const [userId, setUserId] = useState(() => {
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("user") || "demo-student-1";
+  }
+  return "demo-student-1";
+});
   const [scores, setScores] = useState<any>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);

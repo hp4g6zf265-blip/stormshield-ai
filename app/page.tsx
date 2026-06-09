@@ -1,106 +1,69 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const router = useRouter();
-  const [resumeText, setResumeText] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [existingUser, setExistingUser] = useState("");
 
-  const handleAnalyzeAndGo = async () => {
-    if (!resumeText.trim()) return;
-    
-    setIsAnalyzing(true);
-    try {
-      // 1. Send the text to our Groq API
-      const response = await fetch("/api/parse-resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeText }),
-      });
-      
-      const data = await response.json();
-      
-      // 2. Save the real summary into browser memory!
-      if (data.analysis) {
-        localStorage.setItem("resumeSummary", data.analysis);
-      }
-      
-      // 3. Move to the quiz page
-      router.push("/quiz");
-    } catch (err) {
-      console.error("Error parsing resume:", err);
-      // Fallback so the user isn't stuck if the API fails
-      localStorage.setItem("resumeSummary", "Technical professional profile.");
-      router.push("/quiz");
-    } finally {
-      setIsAnalyzing(false);
+  const handleQuickLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (existingUser.trim()) {
+      // Directs the browser straight to the dashboard using their historical handle!
+      window.location.href = `/dashboard?user=${encodeURIComponent(existingUser.trim())}`;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950">
-      
-      {/* Header */}
-      <div className="max-w-2xl text-center mb-10">
-        <h1 className="text-5xl font-black tracking-tight mb-3 bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-          StormShield AI
-        </h1>
-        <p className="text-lg text-slate-400 max-w-xl mx-auto">
-          Resumes measure experience. We measure resilience. Choose your entry path below.
-        </p>
-      </div>
-
-      {/* Two Layout Columns side-by-side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+    <main className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-gray-900 font-sans">
+      <div className="max-w-md w-full space-y-8 bg-white p-8 border border-gray-200 rounded-3xl shadow-sm text-center">
         
-        {/* Left Column: Paste Resume */}
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-blue-400 mb-1">Option A: Contextual Baseline</h3>
-            <p className="text-xs text-slate-400 mb-4">Paste your resume text to seed the AI evaluator with your background profile.</p>
-            
-            <textarea
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-              placeholder="Paste your resume summary, work history, or skills profile here..."
-              className="w-full h-40 p-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-all resize-none"
-            />
-          </div>
-          
-          <button
-            onClick={handleAnalyzeAndGo}
-            disabled={isAnalyzing || !resumeText.trim()}
-            className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
-          >
-            {isAnalyzing ? "Processing with Llama 3..." : "Analyze Background & Start →"}
-          </button>
+        <div>
+          <span className="text-4xl">🛡️</span>
+          <h1 className="text-3xl font-extrabold tracking-tight mt-3">StormShield AI</h1>
+          <p className="text-sm text-gray-500 mt-2">Behavioral Telemetry & Verified Portfolio Architecture</p>
         </div>
 
-        {/* Right Column: Direct Quiz Fast Track */}
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl flex flex-col justify-between border-dashed">
-          <div>
-            <h3 className="text-lg font-bold text-slate-300 mb-1">Option B: Clean Fast-Track</h3>
-            <p className="text-xs text-slate-400 mb-4">Skip the background check entirely and let your scenario reactions form your score matrix raw.</p>
-            
-            <div className="h-40 border border-slate-800/60 rounded-xl flex items-center justify-center bg-slate-950/20 text-slate-600 text-sm italic">
-              No context file will be generated
-            </div>
-          </div>
-          
-          <button
-            onClick={() => {
-              localStorage.removeItem("resumeSummary"); // clear old memory
-              router.push("/quiz");
-            }}
-            className="mt-4 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+        {/* FLOW A: NEW CANDIDATE ENTRY */}
+        <div className="border border-blue-100 bg-blue-50/50 p-5 rounded-2xl space-y-3 text-left">
+          <h3 className="font-bold text-sm text-blue-950 uppercase tracking-wider font-mono">New Candidates</h3>
+          <p className="text-xs text-gray-600">Analyze your baseline capabilities vectors by answering our situational simulator questions.</p>
+          <a 
+            href="/quiz" 
+            className="block text-center w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-sm"
           >
-            Skip Direct to Assessment →
-          </button>
+            Begin Diagnostic Quiz →
+          </a>
+        </div>
+
+        <div className="relative flex py-2 items-center text-gray-300">
+          <div className="flex-grow border-t border-gray-200"></div>
+          <span className="flex-shrink mx-4 text-xs font-mono font-bold uppercase tracking-widest text-gray-400">OR</span>
+          <div className="flex-grow border-t border-gray-200"></div>
+        </div>
+
+        {/* FLOW B: HISTORICAL ACTIVE SESSION BYPASS */}
+        <div className="border border-gray-200 bg-gray-50/50 p-5 rounded-2xl text-left space-y-3">
+          <h3 className="font-bold text-sm text-gray-700 uppercase tracking-wider font-mono">Returning Members</h3>
+          <p className="text-xs text-gray-500">Already completed your assessment? Input your handle to skip the simulator and manage assets.</p>
+          
+          <form onSubmit={handleQuickLogin} className="flex gap-2">
+            <input 
+              type="text" 
+              placeholder="e.g., demo-student-1" 
+              value={existingUser}
+              onChange={(e) => setExistingUser(e.target.value)}
+              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
+            />
+            <button 
+              type="submit" 
+              className="bg-gray-900 hover:bg-gray-800 text-white font-semibold text-xs px-4 py-2 rounded-xl transition-all whitespace-nowrap"
+            >
+              Restore State
+            </button>
+          </form>
         </div>
 
       </div>
-    </div>
+    </main>
   );
 }
