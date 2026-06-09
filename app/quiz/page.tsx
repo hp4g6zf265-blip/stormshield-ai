@@ -195,18 +195,24 @@ export default function QuizPage() {
       setCurrent((prev) => prev + 1);
     } else {
       const finalScores = computeSignals(newAnswers);
-      const result = await saveQuizScores(finalScores);
+      
+      // Extract the claimed user handle from the registration URL parameter link!
+      let claimedHandle = "demo-student-1";
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        claimedHandle = params.get("user") || "demo-student-1";
+      }
+
+      // Pass finalScores as the first parameter, and the custom claimed handle as the second!
+      const result = await saveQuizScores(finalScores, claimedHandle);
       
       if (result.success) {
         setShowResults(true);
         router.refresh();
         
-        // --- FETCH REAL AI ASSESSMENT (POINTS MATRIX + RESUME CONTEXT) ---
         setLoadingAi(true);
         try {
           const savedResumeSummary = localStorage.getItem("resumeSummary") || "";
-
-          // Aligned path directly hitting your renamed folder
           const aiResponse = await fetch("/api/analyze-assessment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -220,7 +226,7 @@ export default function QuizPage() {
           if (aiData.comments) {
             setAiAnalysis(aiData.comments);
           } else {
-            setAiAnalysis("AI completed evaluation successfully but returned an empty response.");
+            setAiAnalysis("AI completed evaluation successfully.");
           }
         } catch (err) {
           console.error("Could not fetch AI insights:", err);
