@@ -19,20 +19,35 @@ interface Job {
   req_collaboration: number;
 }
 
+interface PortfolioItem {
+  id: string;
+  title: string;
+  description: string;
+  proof_url: string; // Dynamic transient signed download URL parsed at runtime
+}
+
 export default function StudentDashboard() {
   const [userId, setUserId] = useState("demo-student-1");
   const [scores, setScores] = useState<any>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const [isEmployerView, setIsEmployerView] = useState(false);
   const [loading, setLoading] = useState(true);
   const [inputUsername, setInputUsername] = useState("");
 
+  // Form State for New Portfolio Item
+  const [newTitle, setNewTitle] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+
   useEffect(() => {
     async function fetchDashboardData() {
       try {
         setLoading(true);
+        
+        // 1. Fetch scores
         const { data: scoreData } = await supabase
           .from("scores")
           .select("*")
@@ -40,11 +55,37 @@ export default function StudentDashboard() {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-        
         setScores(scoreData);
 
+        // 2. Fetch jobs
         const { data: jobData } = await supabase.from("jobs").select("*");
         setJobs((jobData as Job[]) || []);
+
+        // 3. Fetch Portfolio Proofs & generate secure transient viewing tokens
+        const { data: portfolioData } = await supabase
+          .from("portfolio_items")
+          .select("*")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
+
+        if (portfolioData && portfolioData.length > 0) {
+          const secureItems = await Promise.all(
+            portfolioData.map(async (item) => {
+              if (item.proof_url) {
+                // Generates a bulletproof 15-minute temporary view link for a private bucket file
+                const { data: signedData } = await supabase.storage
+                  .from("portfolio-proofs")
+                  .createSignedUrl(item.proof_url, 900); // 900 seconds = 15 minutes
+                return { ...item, proof_url: signedData?.signedUrl || "" };
+              }
+              return item;
+            })
+          );
+          setPortfolio(secureItems);
+        } else {
+          setPortfolio([]);
+        }
+
       } catch (err) {
         console.error("Error reading telemetry matrices:", err);
       } finally {
@@ -53,6 +94,84 @@ export default function StudentDashboard() {
     }
     fetchDashboardData();
   }, [userId]);
+
+  // Handle Portfolio Form Ingestion and Private File Streaming
+  const handleAddPortfolioItem = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fileInput = form.elements.namedItem("proofFile") as HTMLInputElement;
+    const file = fileInput?.files?.[0];
+
+    if (!newTitle.trim()) return alert("Please specify a project or experience title.");
+
+    try {
+      setUploadingFile(true);
+      let storagePath = "";
+
+      if (file) {
+        // 🔒 5MB Size Limit Safeguard Block
+        const maxLimit = 5 * 1024 * 1024; // 5 Megabytes
+        if (file.size > maxLimit) {
+          alert("❌ File size rejected! Verification proofs must be under 5MB.");
+          setUploadingFile(false);
+          return;
+        }
+
+        // Generate a clean, unique file name to avoid namespace collision
+        const fileExt = file.name.split(".").pop();
+        storagePath = `${userId}/${Date.now()}.${fileExt}`;
+
+        // Stream file block binary into the Private Supabase Storage bucket
+        const { error: uploadError } = await supabase.storage
+          .from("portfolio-proofs")
+          .upload(storagePath, file);
+
+        if (uploadError) throw uploadError;
+      }
+
+      // Record item metadata index into our main relational db table
+      const { data: insertedRecord, error: dbError } = await supabase
+        .from("portfolio_items")
+        .insert([{
+          user_id: userId,
+          title: newTitle.trim(),
+          description: newDesc.trim(),
+          proof_url: storagePath
+        }])
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // Handle local state appending + generation of view link instantly so user sees it
+      let previewUrl = "";
+      if (insertedRecord.proof_url) {
+        const { data: localSigned } = await supabase.storage
+          .from("portfolio-proofs")
+          .createSignedUrl(insertedRecord.proof_url, 900);
+        previewUrl = localSigned?.signedUrl || "";
+      }
+
+      setPortfolio(prev => [{
+        id: insertedRecord.id,
+        title: insertedRecord.title,
+        description: insertedRecord.description,
+        proof_url: previewUrl
+      }, ...prev]);
+
+      // Reset Input Fields
+      setNewTitle("");
+      setNewDesc("");
+      form.reset();
+      alert("✅ Living Proof-of-Work entry logged securely!");
+
+    } catch (error: any) {
+      console.error("Upload process interrupted:", error);
+      alert("Failed to save experience entry.");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
 
   const calculateMatchPercentage = (job: Job) => {
     if (!scores) return 0;
@@ -108,6 +227,7 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50/50 p-6 md:p-10 text-gray-900 font-sans">
+      {/* IDENTITY CONTROL QUICK BAR */}
       <div className="max-w-6xl mx-auto mb-6 p-4 bg-slate-900 text-white border border-slate-800 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 shadow-md">
         <div className="flex items-center gap-3">
           <span className="text-xl">🔐</span>
@@ -148,7 +268,10 @@ export default function StudentDashboard() {
             <a href="/" className="mt-6 inline-block w-full py-3 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl text-sm transition-all">Take Quiz</a>
           </div>
         ) : !isEmployerView ? (
+          /* ================= CANDIDATE LAYOUT ================= */
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            {/* LEFT COLUMN: TRAITS AND JOB TRACKING */}
             <div className="space-y-6">
               <div className="bg-white border rounded-2xl p-6 shadow-sm space-y-6">
                 <h3 className="font-bold text-lg text-gray-900 border-b pb-2">Your Talent Architecture</h3>
@@ -167,6 +290,7 @@ export default function StudentDashboard() {
                   );
                 })}
               </div>
+
               <div className="bg-white border rounded-2xl p-6 shadow-sm">
                 <h3 className="font-bold text-sm text-gray-400 uppercase tracking-wider mb-3">Your Job Applications ({appliedJobIds.size})</h3>
                 <div className="space-y-2">
@@ -180,32 +304,107 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            <div className="lg:col-span-2 space-y-4">
-              <input type="text" placeholder="🔍 Search available job descriptions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-sm shadow-sm" />
+            {/* RIGHT TWO-COLUMNS: MATCHING ENGINE & LIVING PORTFOLIO COMPONENT */}
+            <div className="lg:col-span-2 space-y-8">
+              
+              {/* JOB OPPORTUNITIES CONTAINER */}
               <div className="space-y-4">
-                {filteredJobs.map((job) => {
-                  const match = calculateMatchPercentage(job);
-                  const applied = appliedJobIds.has(job.id);
-                  return (
-                    <div key={job.id} className="bg-white border border-gray-200 p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
-                      <div>
-                        <h4 className="text-lg font-bold text-gray-900">{job.title}</h4>
-                        <span className="text-xs font-semibold text-blue-600 block mb-1">{job.company}</span>
-                        <p className="text-sm text-gray-600 mb-3">{job.description}</p>
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${match > 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                          🎯 {match}% Compatibility Match
-                        </span>
+                <input type="text" placeholder="🔍 Search available job descriptions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+                <div className="space-y-4">
+                  {filteredJobs.map((job) => {
+                    const match = calculateMatchPercentage(job);
+                    const applied = appliedJobIds.has(job.id);
+                    return (
+                      <div key={job.id} className="bg-white border border-gray-200 p-6 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+                        <div>
+                          <h4 className="text-lg font-bold text-gray-900">{job.title}</h4>
+                          <span className="text-xs font-semibold text-blue-600 block mb-1">{job.company}</span>
+                          <p className="text-sm text-gray-600 mb-3">{job.description}</p>
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${match > 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            🎯 {match}% Compatibility Match
+                          </span>
+                        </div>
+                        <button onClick={() => handleApply(job.id)} disabled={applied} className={`px-4 py-2 rounded-xl text-xs font-bold ${applied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-900 text-white'}`}>
+                          {applied ? "✓ Applied" : "Easy Apply"}
+                        </button>
                       </div>
-                      <button onClick={() => handleApply(job.id)} disabled={applied} className={`px-4 py-2 rounded-xl text-xs font-bold ${applied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-900 text-white'}`}>
-                        {applied ? "✓ Applied" : "Easy Apply"}
-                      </button>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* ================= NEW FEATURE: PROOF-OF-WORK LIVING PORTFOLIO ================= */}
+              <div className="bg-white border border-gray-200 p-6 rounded-2xl shadow-sm space-y-6">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">🛡️ Verified Proof-of-Work Portfolio</h3>
+                  <p className="text-xs text-gray-500 mt-1">Don't just claim experiences on your resume. Upload certificates, code blueprints, or credentials to lock down validation vectors.</p>
+                </div>
+
+                {/* FORM INGESTION CONTAINER */}
+                <form onSubmit={handleAddPortfolioItem} className="grid grid-cols-1 gap-4 bg-gray-50/50 p-4 border rounded-xl">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input 
+                      type="text" 
+                      placeholder="Experience Title (e.g., AWS Security Specialist Cert)" 
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      className="bg-white border border-gray-200 rounded-lg p-2.5 text-sm focus:outline-none"
+                    />
+                    <input 
+                      type="file" 
+                      name="proofFile"
+                      accept="image/*,.pdf"
+                      className="bg-white border border-gray-200 rounded-lg p-1.5 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <textarea 
+                    placeholder="Briefly describe what you did or the exact scope of this project credential..." 
+                    value={newDesc}
+                    onChange={(e) => setNewDesc(e.target.value)}
+                    className="bg-white border border-gray-200 rounded-lg p-2.5 text-sm h-16 focus:outline-none resize-none"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={uploadingFile}
+                    className="bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 text-white font-semibold py-2 rounded-lg text-xs transition-all"
+                  >
+                    {uploadingFile ? "🔒 Securely Streaming Asset Data..." : "⚡ Commit Experience & Private Proof Vector"}
+                  </button>
+                </form>
+
+                {/* LIVING LIST RENDER MODULE */}
+                <div className="space-y-4 pt-2">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Your Authenticated Portfolio Ledger</h4>
+                  {portfolio.map((item) => (
+                    <div key={item.id} className="border border-gray-100 bg-white p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start gap-4 hover:border-gray-200 transition-all">
+                      <div className="space-y-1">
+                        <h5 className="font-bold text-sm text-gray-900">{item.title}</h5>
+                        {item.description && <p className="text-xs text-gray-600 max-w-md">{item.description}</p>}
+                      </div>
+                      {item.proof_url ? (
+                        <a 
+                          href={item.proof_url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-100 px-2.5 py-1 rounded-md tracking-wide hover:bg-blue-100 transition-all uppercase whitespace-nowrap"
+                        >
+                          👁️ View Encrypted Proof
+                        </a>
+                      ) : (
+                        <span className="text-[10px] font-medium text-gray-400 italic">No File Attached</span>
+                      )}
+                    </div>
+                  ))}
+                  {portfolio.length === 0 && (
+                    <p className="text-xs text-gray-400 italic text-center py-4 bg-gray-50/50 rounded-xl border border-dashed">No authenticated portfolio logs recorded on this profile token.</p>
+                  )}
+                </div>
+              </div>
+
             </div>
           </div>
         ) : (
+          /* ================= EMPLOYER PANEL ================= */
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             <div className="p-6 border-b border-gray-100">
               <h3 className="font-bold text-lg text-gray-900">Employer Pipeline</h3>
