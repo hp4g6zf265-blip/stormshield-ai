@@ -144,7 +144,6 @@ const questions = [
   },
 ];
 
-// 1. Types & Helper Functions
 export type TraitScores = {
   leadership: number;
   empathy: number;
@@ -153,7 +152,6 @@ export type TraitScores = {
   collaboration: number;
 };
 
-// Infers the shape of an answer option directly from your questions array
 type Answer = typeof questions[number]["options"][number];
 
 export function computeSignals(answers: Answer[]): TraitScores {
@@ -167,9 +165,7 @@ export function computeSignals(answers: Answer[]): TraitScores {
 
   answers.forEach((ans) => {
     if (!ans?.traits) return;
-
     Object.entries(ans.traits).forEach(([key, value]) => {
-      // Ensuring the key exists on TraitScores before adding
       if (key in result) {
         result[key as keyof TraitScores] += value ?? 0;
       }
@@ -179,12 +175,11 @@ export function computeSignals(answers: Answer[]): TraitScores {
   return result;
 }
 
-// 2. Main Page Component
 export default function QuizPage() {
   const router = useRouter();
   const [current, setCurrent] = useState<number>(0);
   const [answers, setAnswers] = useState<Answer[]>([]);
-  const [showResults, setShowResults] = useState<boolean>(false); // New state to toggle results page
+  const [showResults, setShowResults] = useState<boolean>(false);
   const [aiAnalysis, setAiAnalysis] = useState<string>("");
   const [loadingAi, setLoadingAi] = useState<boolean>(false);
 
@@ -205,20 +200,31 @@ export default function QuizPage() {
       if (result.success) {
         setShowResults(true);
         router.refresh();
-        // --- NEW: FETCH AI ANALYSIS ---
+        
+        // --- FETCH REAL AI ASSESSMENT (POINTS MATRIX + RESUME CONTEXT) ---
         setLoadingAi(true);
         try {
-          const aiResponse = await fetch("/api/analyze", {
+          const savedResumeSummary = localStorage.getItem("resumeSummary") || "";
+
+          // Aligned path directly hitting your renamed folder
+          const aiResponse = await fetch("/api/analyze-assessment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(finalScores),
+            body: JSON.stringify({
+              resumeSummary: savedResumeSummary,
+              scores: finalScores
+            }),
           });
+          
           const aiData = await aiResponse.json();
-          if (aiData.analysis) {
-            setAiAnalysis(aiData.analysis);
+          if (aiData.comments) {
+            setAiAnalysis(aiData.comments);
+          } else {
+            setAiAnalysis("AI completed evaluation successfully but returned an empty response.");
           }
         } catch (err) {
           console.error("Could not fetch AI insights:", err);
+          setAiAnalysis("Failed to compile evaluation comments.");
         } finally {
           setLoadingAi(false);
         }
@@ -232,9 +238,9 @@ export default function QuizPage() {
     setAnswers([]);
     setCurrent(0);
     setShowResults(false);
+    setAiAnalysis("");
   };
 
-  // --- RESULTS SCREEN ---
   if (showResults) {
     const finalScores = computeSignals(answers);
 
@@ -253,27 +259,28 @@ export default function QuizPage() {
             </div>
           ))}
         </div>
-        {/* AI Insights Card */}
-        <div className="mt-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-6 text-left shadow-sm">
+
+        {/* Dynamic AI Analysis Section */}
+        <div className="mt-6 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-6 text-left shadow-sm mb-6">
           <h3 className="text-lg font-bold text-indigo-900 mb-3 flex items-center gap-2">
-            ✨ AI Talent Insights
+            ✨ Groq AI Behavioral Alignment Comments
           </h3>
           
           {loadingAi && (
             <div className="flex items-center gap-3 text-sm text-indigo-600 animate-pulse">
               <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-              <span>Analyzing your behavioral signatures...</span>
+              <span>Llama 3 is synthesizing your metrics...</span>
             </div>
           )}
 
           {!loadingAi && aiAnalysis && (
-            <div className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+            <div className="text-sm text-gray-700 whitespace-pre-line leading-relaxed font-medium">
               {aiAnalysis}
             </div>
           )}
 
           {!loadingAi && !aiAnalysis && (
-            <p className="text-xs text-gray-400 italic">Waiting for AI assessment...</p>
+            <p className="text-xs text-gray-400 italic">No evaluation was generated.</p>
           )}
         </div>
 
@@ -287,7 +294,6 @@ export default function QuizPage() {
     );
   }
 
-  // --- QUIZ SCREEN ---
   return (
     <main className="p-10 max-w-2xl mx-auto">
       <p className="text-sm text-gray-500 mb-2">

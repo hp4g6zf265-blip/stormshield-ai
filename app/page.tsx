@@ -5,105 +5,102 @@ import { useRouter } from "next/navigation";
 
 export default function Home() {
   const router = useRouter();
-  const [isUploading, setIsUploading] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [resumeText, setResumeText] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setFileName(file.name);
-      setIsUploading(true);
-
-      // Simulate a smart AI resume parsing delay
-      setTimeout(() => {
-        setIsUploading(false);
-      }, 2000);
+  const handleAnalyzeAndGo = async () => {
+    if (!resumeText.trim()) return;
+    
+    setIsAnalyzing(true);
+    try {
+      // 1. Send the text to our Groq API
+      const response = await fetch("/api/parse-resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resumeText }),
+      });
+      
+      const data = await response.json();
+      
+      // 2. Save the real summary into browser memory!
+      if (data.analysis) {
+        localStorage.setItem("resumeSummary", data.analysis);
+      }
+      
+      // 3. Move to the quiz page
+      router.push("/quiz");
+    } catch (err) {
+      console.error("Error parsing resume:", err);
+      // Fallback so the user isn't stuck if the API fails
+      localStorage.setItem("resumeSummary", "Technical professional profile.");
+      router.push("/quiz");
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950">
       
-      {/* Hero Header Section */}
-      <div className="max-w-2xl text-center mb-12">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm mb-4">
-          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-          Next-Gen Behavioral Analytics
-        </div>
-        <h1 className="text-6xl font-black tracking-tight mb-4 bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+      {/* Header */}
+      <div className="max-w-2xl text-center mb-10">
+        <h1 className="text-5xl font-black tracking-tight mb-3 bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
           StormShield AI
         </h1>
-        <p className="text-xl text-slate-400 max-w-xl mx-auto">
-          Resumes measure experience. We measure resilience. Upload your resume to begin.
+        <p className="text-lg text-slate-400 max-w-xl mx-auto">
+          Resumes measure experience. We measure resilience. Choose your entry path below.
         </p>
       </div>
 
-      {/* Main Interactive Flow Card */}
-      <div className="w-full max-w-md bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-8 rounded-2xl shadow-2xl">
+      {/* Two Layout Columns side-by-side */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
         
-        {!fileName ? (
-          /* Step 1: Upload Box */
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-slate-200 text-center">Step 1: Upload Resume</h3>
-            <label className="group relative flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-blue-500/50 rounded-xl p-8 cursor-pointer transition-all bg-slate-950/40 hover:bg-slate-900/40">
-              <input 
-                type="file" 
-                accept=".pdf,.docx" 
-                className="hidden" 
-                onChange={handleFileChange}
-              />
-              <div className="w-12 h-12 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-blue-400 group-hover:bg-blue-500/10 transition-all mb-4">
-                📄
-              </div>
-              <p className="text-sm font-medium text-slate-300">Click to upload or drag & drop</p>
-              <p className="text-xs text-slate-500 mt-1">PDF or DOCX up to 10MB</p>
-            </label>
-          </div>
-        ) : (
-          /* Step 2: Processing & Redirection */
-          <div className="space-y-6 text-center">
-            <h3 className="text-xl font-bold text-slate-200">Step 2: Resume Received</h3>
+        {/* Left Column: Paste Resume */}
+        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-blue-400 mb-1">Option A: Contextual Baseline</h3>
+            <p className="text-xs text-slate-400 mb-4">Paste your resume text to seed the AI evaluator with your background profile.</p>
             
-            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3 truncate">
-                <span className="text-2xl">📄</span>
-                <p className="text-sm font-medium text-slate-300 truncate">{fileName}</p>
-              </div>
-              <button 
-                onClick={() => setFileName(null)} 
-                className="text-xs text-slate-500 hover:text-red-400 transition-colors px-2 py-1"
-              >
-                Clear
-              </button>
-            </div>
-
-            {isUploading ? (
-              <div className="py-4 space-y-3">
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-blue-500 h-full animate-[loading_2s_ease-in-out_infinite] w-1/2 rounded-full"></div>
-                </div>
-                <p className="text-xs text-blue-400 font-mono tracking-wide animate-pulse">AI IS PARSING SKILLS & EXPERIENCE...</p>
-              </div>
-            ) : (
-              <button
-                onClick={() => router.push("/quiz")}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 group"
-              >
-                Start Behavioral Quiz
-                <span className="group-hover:translate-x-1 transition-transform">→</span>
-              </button>
-            )}
+            <textarea
+              value={resumeText}
+              onChange={(e) => setResumeText(e.target.value)}
+              placeholder="Paste your resume summary, work history, or skills profile here..."
+              className="w-full h-40 p-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-300 placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-all resize-none"
+            />
           </div>
-        )}
-      </div>
+          
+          <button
+            onClick={handleAnalyzeAndGo}
+            disabled={isAnalyzing || !resumeText.trim()}
+            className="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            {isAnalyzing ? "Processing with Llama 3..." : "Analyze Background & Start →"}
+          </button>
+        </div>
 
-      {/* Dynamic Keyframes for the processing animation */}
-      <style jsx global>{`
-        @keyframes loading {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(200%); }
-        }
-      `}</style>
+        {/* Right Column: Direct Quiz Fast Track */}
+        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl flex flex-col justify-between border-dashed">
+          <div>
+            <h3 className="text-lg font-bold text-slate-300 mb-1">Option B: Clean Fast-Track</h3>
+            <p className="text-xs text-slate-400 mb-4">Skip the background check entirely and let your scenario reactions form your score matrix raw.</p>
+            
+            <div className="h-40 border border-slate-800/60 rounded-xl flex items-center justify-center bg-slate-950/20 text-slate-600 text-sm italic">
+              No context file will be generated
+            </div>
+          </div>
+          
+          <button
+            onClick={() => {
+              localStorage.removeItem("resumeSummary"); // clear old memory
+              router.push("/quiz");
+            }}
+            className="mt-4 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            Skip Direct to Assessment →
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }
