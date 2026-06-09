@@ -284,15 +284,25 @@ export default function QuizPage() {
           )}
         </div>
 
-        <button
-          className="bg-blue-600 text-white font-medium px-6 py-3 rounded-lg hover:bg-blue-700 transition"
-          onClick={resetQuiz}
-        >
-          Retake Quiz
-        </button>
-      </main>
-    );
-  }
+        {/* BOTTOM BUTTON CONTROLS */}
+        <div className="mt-8 flex flex-col sm:flex-row justify-center items-center gap-4">
+          <button
+            className="w-full sm:w-auto bg-gray-100 text-gray-700 font-medium px-6 py-3 rounded-xl hover:bg-gray-200 transition"
+            onClick={resetQuiz}
+          >
+            Retake Quiz
+          </button>
+          
+          <button
+            className="w-full sm:w-auto bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-500 transition shadow-md flex items-center justify-center gap-2"
+            onClick={() => window.location.href = "/dashboard"}
+          >
+            Explore Job Dashboard →
+          </button>
+        </div>
+      </main> 
+    ); 
+  } 
 
   return (
     <main className="p-10 max-w-2xl mx-auto">
